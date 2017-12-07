@@ -1,11 +1,26 @@
 import logging
 import pprint
 
-import flask
+from flask import Flask, jsonify, request
 import requests
-from requests.exceptions import HTTPError
+
 
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG)
+app = Flask(__name__)
+
+
+@app.route('/quote', methods=['POST'])
+def endpoint():
+    required_fields = ('amount', 'action', 'base_currency', 'quote_currency')
+    if not all([f in request.json for f in required_fields]):
+        raise ValueError('Missing one of required fields: {}'.format(
+            ', '.join(required_fields)
+        ))
+    quantity = float(request.json.get('amount'))
+    action = request.json.get('action').upper()
+    from_currency = request.json.get('base_currency').upper()
+    to_currency = request.json.get('quote_currency').upper()
+    return jsonify(quote(quantity, action, from_currency, to_currency))
 
 
 def quote(quote_quantity, action, from_currency, to_currency):
@@ -37,6 +52,7 @@ def quote(quote_quantity, action, from_currency, to_currency):
     quantity_needed = quote_quantity
     weights = []
     logging.info('Quote total: {}'.format(quote_quantity))
+    logging.debug('Consulting table: {}'.format(book))
     for price, quantity_available, _ in data[book]:
         # determine amount to purchase
         price, quantity_available = float(price), float(quantity_available)
@@ -90,17 +106,8 @@ def quote(quote_quantity, action, from_currency, to_currency):
         total_cost,
         unit_average,
     ))
-
-
-# quote(20., 'BUY', 'BTC', 'USD')
-
-# quote(20., 'SELL', 'USD', 'BTC') <- this is wrong
-# quote(15000., 'SELL', 'BTC', 'USD')
-
-# quote(1., 'BUY', 'BTC', 'USD')  # i want to buy one btc how much usd do i pay   (14000)
-# quote(1., 'SELL', 'BTC', 'USD') # i want to sell one btc how much usd do i receive   (13000)
-# quote(14000., 'BUY', 'USD', 'BTC')  # i want to buy 14000 usd how much btc do i pay (1)
-# quote(14000., 'BUY', 'USD', 'BTC')  # i want to sell 14000 usd how much btc do i receive (1)
-
-# quote(20., 'SELL', 'USD', 'BTC') <- this is wrong
-quote(15000., 'BUY', 'USD', 'BTC')
+    return {
+        'total': total_cost,
+        'price': unit_average,
+        'currency': to_currency,
+    }
