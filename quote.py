@@ -20,7 +20,14 @@ def endpoint():
     action = request.json.get('action').upper()
     base_currency = request.json.get('base_currency').upper()
     quote_currency = request.json.get('quote_currency').upper()
-    return jsonify(quote(quantity, action, base_currency, quote_currency))
+
+    try:
+        response = quote(quantity, action, base_currency, quote_currency)
+    except Exception as e:
+        # TODO: Better exception catching, create proper Exception classes
+        response = {'error': e.message}
+
+    return jsonify(response)
 
 
 def quote(quote_quantity, action, base_currency, quote_currency):
@@ -48,7 +55,6 @@ def quote(quote_quantity, action, base_currency, quote_currency):
         # exchanges are available, but the spec only listed
         # a single endpoint
         response = requests.get(url.format(quote_currency, base_currency))
-        response.raise_for_status()
         if response.status_code == 404:
             raise Exception('Unable to resolve exchange between currencies.')
 
@@ -57,7 +63,7 @@ def quote(quote_quantity, action, base_currency, quote_currency):
         # maybe this endpoint would solve it?
         # https://api.gdax.com/products/BTC-USD/ticker
         # but again, the spec only listed the single endpoint
-        raise NotImplementedError('Sorry :(')
+        raise NotImplementedError('Unable to do reverse exchanges. Sorry :(')
 
     data = response.json()
 
