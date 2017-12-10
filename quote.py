@@ -18,29 +18,38 @@ def endpoint():
         ))
     quantity = float(request.json.get('amount'))
     action = request.json.get('action').upper()
-    from_currency = request.json.get('base_currency').upper()
-    to_currency = request.json.get('quote_currency').upper()
-    return jsonify(quote(quantity, action, from_currency, to_currency))
+    base_currency = request.json.get('base_currency').upper()
+    quote_currency = request.json.get('quote_currency').upper()
+    return jsonify(quote(quantity, action, base_currency, quote_currency))
 
 
-def quote(quote_quantity, action, from_currency, to_currency):
+def quote(quote_quantity, action, base_currency, quote_currency):
     actions = ('BUY', 'SELL')
+    inverted = False
     if action not in actions:
         raise ValueError('Invalid action, expected one of: {}'.format(actions))
     buy = action == 'BUY'
 
     book = 'asks' if buy else 'bids'
     url = 'https://api.gdax.com/products/{}-{}/book?level=2'
+
     data = None
 
     # try requesting data from exchange1 -> exchange2
-    response = requests.get(url.format(from_currency, to_currency))
+    response = requests.get(url.format(base_currency, quote_currency))
     if response.status_code == 404:
         logging.info('Exchange does not exist, reversing.')
+        # need a quote price to reverse the exchange
+        quote_url = 'https://api.gdax.com/products/{}-{}/ticker'
+        response = requests.get(quote_url.format(quote_currency, base_currency))
+        quote = float(response.json()['bid'])
+        quote_quantity = quote_quantity / quote
+
         # first attempt failed, flip exchanges and try again
         buy = not buy
+        inverted = True
         # try requesting data from exchange2 -> exchange1
-        response = requests.get(url.format(to_currency, from_currency))
+        response = requests.get(url.format(quote_currency, base_currency))
         response.raise_for_status()
         if response.status_code == 404:
             raise Exception('Unable to resolve exchange between currencies.')
@@ -106,8 +115,31 @@ def quote(quote_quantity, action, from_currency, to_currency):
         total_cost,
         unit_average,
     ))
+
+    if inverted:
+        '''
+        Quantity 3
+        I have:
+        {
+          "currency": "BTC",
+          "price": 14046.01,
+          "total": 42138.03
+        }
+
+        I want:
+        {
+          "currency": "BTC",
+          "price": 14046.01,
+          "total": 42138.03
+        }
+        '''
+
     return {
         'total': total_cost,
         'price': unit_average,
-        'currency': to_currency,
+        'currency': quote_currency,
     }
+
+# print quote(3., 'BUY', 'BTC', 'USD')
+# print quote(2., 'BUY', 'BTC', 'USD')
+print quote(1000., 'BUY', 'USD', 'BTC')
