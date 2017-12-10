@@ -25,7 +25,6 @@ def endpoint():
 
 def quote(quote_quantity, action, base_currency, quote_currency):
     actions = ('BUY', 'SELL')
-    inverted = False
     if action not in actions:
         raise ValueError('Invalid action, expected one of: {}'.format(actions))
     buy = action == 'BUY'
@@ -38,21 +37,27 @@ def quote(quote_quantity, action, base_currency, quote_currency):
     # try requesting data from exchange1 -> exchange2
     response = requests.get(url.format(base_currency, quote_currency))
     if response.status_code == 404:
-        logging.info('Exchange does not exist, reversing.')
-        # need a quote price to reverse the exchange
-        quote_url = 'https://api.gdax.com/products/{}-{}/ticker'
-        response = requests.get(quote_url.format(quote_currency, base_currency))
-        quote = float(response.json()['bid'])
-        quote_quantity = quote_quantity / quote
-
         # first attempt failed, flip exchanges and try again
+        logging.info('Exchange does not exist, reversing.')
+
+        # i believe we'd switch tables here (i.e. asks <-> bids)
         buy = not buy
-        inverted = True
+
         # try requesting data from exchange2 -> exchange1
+        # could probably have checked another api for what
+        # exchanges are available, but the spec only listed
+        # a single endpoint
         response = requests.get(url.format(quote_currency, base_currency))
         response.raise_for_status()
         if response.status_code == 404:
             raise Exception('Unable to resolve exchange between currencies.')
+
+        # never got a working solution to flipping currencies
+        # seems like I'd need a baseline quote to flip from
+        # maybe this endpoint would solve it?
+        # https://api.gdax.com/products/BTC-USD/ticker
+        # but again, the spec only listed the single endpoint
+        raise NotImplementedError('Sorry :(')
 
     data = response.json()
 
@@ -94,11 +99,6 @@ def quote(quote_quantity, action, base_currency, quote_currency):
     if quantity_allocated != quote_quantity:
         raise Exception('Not enough data available to allocate purchase.')
 
-    # ensure we totaled 100%, quick sanity check - not for production
-    if not (sum([p[1] for p in weights]) == 1):
-        # TODO: Figure out
-        logging.warning('Rounding error, probably')
-
     # use collected weights to compute total cost and average
     # (could have done this in the loop above, but for clarity it's split)
     total_cost = 0.
@@ -116,30 +116,12 @@ def quote(quote_quantity, action, base_currency, quote_currency):
         unit_average,
     ))
 
-    if inverted:
-        '''
-        Quantity 3
-        I have:
-        {
-          "currency": "BTC",
-          "price": 14046.01,
-          "total": 42138.03
-        }
-
-        I want:
-        {
-          "currency": "BTC",
-          "price": 14046.01,
-          "total": 42138.03
-        }
-        '''
-
     return {
         'total': total_cost,
         'price': unit_average,
         'currency': quote_currency,
     }
 
-# print quote(3., 'BUY', 'BTC', 'USD')
-# print quote(2., 'BUY', 'BTC', 'USD')
-print quote(1000., 'BUY', 'USD', 'BTC')
+
+if __name__ == '__main__':
+    print quote(1., 'BUY', 'BTC', 'USD')
